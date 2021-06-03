@@ -8,12 +8,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 from PIL import Image
-
 import re
-
+import numpy as np
 import os
 import copy
-
+from skimage.transform import resize
 from helpers import makedir, find_high_activation_crop
 import model
 import push
@@ -23,30 +22,32 @@ from log import create_logger
 from preprocess import mean, std, preprocess_input_function, undo_preprocess_input_function
 
 import argparse
+import pandas as pd
+import ast
+import png
 
+k=3
+# specify the test image to be analyzed
 parser = argparse.ArgumentParser()
-parser.add_argument('-gpuid', nargs=1, type=str, default='0')
-parser.add_argument('-modeldir', nargs=1, type=str)
-parser.add_argument('-model', nargs=1, type=str)
-parser.add_argument('-imgdir', nargs=1, type=str)
-parser.add_argument('-img', nargs=1, type=str)
-parser.add_argument('-imgclass', nargs=1, type=int, default=-1)
+parser.add_argument('-test_img_name', nargs=1, type=str, default='0')
+parser.add_argument('-test_img_dir', nargs=1, type=str, default='0')
+parser.add_argument('-test_img_label', nargs=1, type=int, default='-1')
+parser.add_argument('-test_model_dir', nargs=1, type=str, default='0')
+parser.add_argument('-test_model_name', nargs=1, type=str, default='0')
 args = parser.parse_args()
 
-os.environ['CUDA_VISIBLE_DEVICES'] = args.gpuid[0]
 
-# specify the test image to be analyzed
-test_image_dir = args.imgdir[0] #'./local_analysis/Painted_Bunting_Class15_0081/'
-test_image_name = args.img[0] #'Painted_Bunting_0081_15230.jpg'
-test_image_label = args.imgclass[0] #15
+test_image_dir = args.test_img_dir[0]
+test_image_name =  args.test_img_name[0] #'DP_AJOD_196544.npy' # 'DP_AAPR_R_MLO_3#0.npy' # 
+test_image_label = args.test_img_label[0]
 
 test_image_path = os.path.join(test_image_dir, test_image_name)
 
 # load the model
 check_test_accu = False
 
-load_model_dir = args.modeldir[0] #'./saved_models/vgg19/003/'
-load_model_name = args.model[0] #'10_18push0.7822.pth'
+load_model_dir = args.test_model_dir[0] #'/usr/xtmp/mammo/alina_saved_models/vgg16/finer_1118_top2percent_randseed=1234/'
+load_model_name = args.test_model_name[0] # '100_9push0.9258.pth'
 
 #if load_model_dir[-1] == '/':
 #    model_base_architecture = load_model_dir.split('/')[-3]
@@ -58,9 +59,9 @@ load_model_name = args.model[0] #'10_18push0.7822.pth'
 model_base_architecture = load_model_dir.split('/')[2]
 experiment_run = '/'.join(load_model_dir.split('/')[3:])
 
-save_analysis_path = os.path.join(test_image_dir, model_base_architecture,
-                                  experiment_run, load_model_name)
+save_analysis_path = os.path.join(load_model_dir, test_image_name)
 makedir(save_analysis_path)
+print(save_analysis_path)
 
 log, logclose = create_logger(log_filename=os.path.join(save_analysis_path, 'local_analysis.log'))
 
@@ -112,6 +113,8 @@ load_img_dir = os.path.join(load_model_dir, 'img')
 prototype_info = np.load(os.path.join(load_img_dir, 'epoch-'+epoch_number_str, 'bb'+epoch_number_str+'.npy'))
 prototype_img_identity = prototype_info[:, -1]
 
+num_classes = len(set(prototype_img_identity))
+
 log('Prototypes are chosen from ' + str(len(set(prototype_img_identity))) + ' number of classes.')
 log('Their class identities are: ' + str(prototype_img_identity))
 
@@ -131,9 +134,9 @@ def save_preprocessed_img(fname, preprocessed_imgs, index=0):
     undo_preprocessed_img = undo_preprocessed_img[0]
     undo_preprocessed_img = undo_preprocessed_img.detach().cpu().numpy()
     undo_preprocessed_img = np.transpose(undo_preprocessed_img, [1,2,0])
-    
     plt.imsave(fname, undo_preprocessed_img)
     return undo_preprocessed_img
+
 
 def save_prototype(fname, epoch, index):
     p_img = plt.imread(os.path.join(load_img_dir, 'epoch-'+str(epoch), 'prototype-img'+str(index)+'.png'))
@@ -152,6 +155,15 @@ def save_prototype_original_img_with_bbox(fname, epoch, index,
     p_img_bgr = cv2.imread(os.path.join(load_img_dir, 'epoch-'+str(epoch), 'prototype-img-original'+str(index)+'.png'))
     cv2.rectangle(p_img_bgr, (bbox_width_start, bbox_height_start), (bbox_width_end-1, bbox_height_end-1),
                   color, thickness=2)
+    p_img_rgb = p_img_bgr[...,::-1]
+    p_img_rgb = np.float32(p_img_rgb) / 255
+    #plt.imshow(p_img_rgb)
+    #plt.axis('off')
+    plt.imsave(fname, p_img_rgb)
+
+def save_prototype_full_size(fname, epoch, index,
+                            color=(0, 255, 255)):
+    p_img_bgr = cv2.imread(os.path.join(load_img_dir, 'epoch-'+str(epoch), 'prototype-img-original'+str(index)+'.png'))
     p_img_rgb = p_img_bgr[...,::-1]
     p_img_rgb = np.float32(p_img_rgb) / 255
     #plt.imshow(p_img_rgb)
@@ -198,7 +210,7 @@ for i in range(logits.size(0)):
 
 idx = 0
 predicted_cls = tables[idx][0]
-correct_cls = tables[idx][1]
+correct_cls = test_image_label#tables[idx][1]
 log('Predicted: ' + str(predicted_cls))
 log('Actual: ' + str(correct_cls))
 original_img = save_preprocessed_img(os.path.join(save_analysis_path, 'original_img.png'),
@@ -206,23 +218,28 @@ original_img = save_preprocessed_img(os.path.join(save_analysis_path, 'original_
 
 ##### MOST ACTIVATED (NEAREST) 10 PROTOTYPES OF THIS IMAGE
 makedir(os.path.join(save_analysis_path, 'most_activated_prototypes'))
-
-log('Most activated 10 prototypes of this image:')
+max_act = 0
+log('Most activated 5 prototypes of this image:')
 array_act, sorted_indices_act = torch.sort(prototype_activations[idx])
-for i in range(1,11):
+for i in range(1,6):
     log('top {0} activated prototype for this image:'.format(i))
     save_prototype(os.path.join(save_analysis_path, 'most_activated_prototypes',
                                 'top-%d_activated_prototype.png' % i),
-                   start_epoch_number, sorted_indices_act[-i].item())
+                                start_epoch_number, sorted_indices_act[-i].item())
+    save_prototype_full_size(fname=os.path.join(save_analysis_path, 'most_activated_prototypes',
+                            'top-%d_activated_prototype_full_size.png' % i),
+                            epoch=start_epoch_number,
+                            index=sorted_indices_act[-i].item(),
+                            color=(0, 255, 255))
     save_prototype_original_img_with_bbox(fname=os.path.join(save_analysis_path, 'most_activated_prototypes',
-                                                             'top-%d_activated_prototype_in_original_pimg.png' % i),
-                                          epoch=start_epoch_number,
-                                          index=sorted_indices_act[-i].item(),
-                                          bbox_height_start=prototype_info[sorted_indices_act[-i].item()][1],
-                                          bbox_height_end=prototype_info[sorted_indices_act[-i].item()][2],
-                                          bbox_width_start=prototype_info[sorted_indices_act[-i].item()][3],
-                                          bbox_width_end=prototype_info[sorted_indices_act[-i].item()][4],
-                                          color=(0, 255, 255))
+                                        'top-%d_activated_prototype_in_original_pimg.png' % i),
+                                        epoch=start_epoch_number,
+                                        index=sorted_indices_act[-i].item(),
+                                        bbox_height_start=prototype_info[sorted_indices_act[-i].item()][1],
+                                        bbox_height_end=prototype_info[sorted_indices_act[-i].item()][2],
+                                        bbox_width_start=prototype_info[sorted_indices_act[-i].item()][3],
+                                        bbox_width_end=prototype_info[sorted_indices_act[-i].item()][4],
+                                        color=(0, 255, 255))
     save_prototype_self_activation(os.path.join(save_analysis_path, 'most_activated_prototypes',
                                                 'top-%d_activated_prototype_self_act.png' % i),
                                    start_epoch_number, sorted_indices_act[-i].item())
@@ -231,6 +248,17 @@ for i in range(1,11):
     if prototype_max_connection[sorted_indices_act[-i].item()] != prototype_img_identity[sorted_indices_act[-i].item()]:
         log('prototype connection identity: {0}'.format(prototype_max_connection[sorted_indices_act[-i].item()]))
     log('activation value (similarity score): {0}'.format(array_act[-i]))
+
+    f = open(save_analysis_path + '/most_activated_prototypes/' + 'top-' + str(i) + '_activated_prototype.txt', "w")
+    f.write('similarity: {0:.3f}\n'.format(array_act[-i].item()))
+    f.write('last layer connection with predicted class: {0} \n'.format(ppnet.last_layer.weight[predicted_cls][sorted_indices_act[-i].item()]))
+    f.write('proto index:')
+    f.write(str(sorted_indices_act[-i].item()) + '\n')
+    for class_id_ in range(num_classes):
+        f.write(f'proto connection to class {class_id_}:')
+        f.write(str(ppnet.last_layer.weight[class_id_][sorted_indices_act[-i].item()]) + '\n')
+    f.close()
+
     log('last layer connection with predicted class: {0}'.format(ppnet.last_layer.weight[predicted_cls][sorted_indices_act[-i].item()]))
     
     activation_pattern = prototype_activation_patterns[idx][sorted_indices_act[-i].item()].detach().cpu().numpy()
@@ -267,10 +295,28 @@ for i in range(1,11):
     plt.imsave(os.path.join(save_analysis_path, 'most_activated_prototypes',
                             'prototype_activation_map_by_top-%d_prototype.png' % i),
                overlayed_img)
-    log('--------------------------------------------------------------')
 
+    # show the image overlayed with different normalized prototype activation map
+    rescaled_activation_pattern = upsampled_activation_pattern - np.amin(upsampled_activation_pattern)
+    
+    # get the max activation of any proto on this image (works because we start with highest act, must be on rescale)
+    if np.amax(rescaled_activation_pattern) > max_act:
+        max_act = np.amax(rescaled_activation_pattern)
+
+    rescaled_activation_pattern = rescaled_activation_pattern / max_act
+    heatmap = cv2.applyColorMap(np.uint8(255*rescaled_activation_pattern), cv2.COLORMAP_JET)
+    heatmap = np.float32(heatmap) / 255
+    heatmap = heatmap[...,::-1]
+    overlayed_img = 0.5 * original_img + 0.3 * heatmap
+    #plt.axis('off')
+    plt.imsave(os.path.join(save_analysis_path, 'most_activated_prototypes',
+                            'prototype_activation_map_by_top-%d_prototype_normed.png' % i),
+               overlayed_img)
+    log('--------------------------------------------------------------')
+log('***************************************************************')
+log('***************************************************************')
 ##### PROTOTYPES FROM TOP-k CLASSES
-k = 50
+
 log('Prototypes from top-%d classes:' % k)
 topk_logits, topk_classes = torch.topk(logits[idx], k=k)
 for i,c in enumerate(topk_classes.detach().cpu().numpy()):
@@ -287,19 +333,27 @@ for i,c in enumerate(topk_classes.detach().cpu().numpy()):
         prototype_index = class_prototype_indices[j]
         save_prototype(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
                                     'top-%d_activated_prototype.png' % prototype_cnt),
-                       start_epoch_number, prototype_index)
+                                    start_epoch_number, 
+                                    prototype_index)
+        save_prototype_full_size(fname=os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
+                                            'top-%d_activated_prototype_full_size.png' % prototype_cnt),
+                                            epoch=start_epoch_number,
+                                            index=prototype_index,
+                                            color=(0, 255, 255))
         save_prototype_original_img_with_bbox(fname=os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
-                                                                 'top-%d_activated_prototype_in_original_pimg.png' % prototype_cnt),
-                                              epoch=start_epoch_number,
-                                              index=prototype_index,
-                                              bbox_height_start=prototype_info[prototype_index][1],
-                                              bbox_height_end=prototype_info[prototype_index][2],
-                                              bbox_width_start=prototype_info[prototype_index][3],
-                                              bbox_width_end=prototype_info[prototype_index][4],
-                                              color=(0, 255, 255))
-        save_prototype_self_activation(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
+                                            'top-%d_activated_prototype_in_original_pimg.png' % prototype_cnt),
+                                            epoch=start_epoch_number,
+                                            index=prototype_index,
+                                            bbox_height_start=prototype_info[prototype_index][1],
+                                            bbox_height_end=prototype_info[prototype_index][2],
+                                            bbox_width_start=prototype_info[prototype_index][3],
+                                            bbox_width_end=prototype_info[prototype_index][4],
+                                            color=(0, 255, 255))
+        save_prototype_self_activation(os.path.join(save_analysis_path, 
+                                                    'top-%d_class_prototypes' % (i+1),
                                                     'top-%d_activated_prototype_self_act.png' % prototype_cnt),
-                                       start_epoch_number, prototype_index)
+                                                    start_epoch_number, 
+                                                    prototype_index)
         log('prototype index: {0}'.format(prototype_index))
         log('prototype class identity: {0}'.format(prototype_img_identity[prototype_index]))
         if prototype_max_connection[prototype_index] != prototype_img_identity[prototype_index]:
@@ -310,7 +364,15 @@ for i,c in enumerate(topk_classes.detach().cpu().numpy()):
         activation_pattern = prototype_activation_patterns[idx][prototype_index].detach().cpu().numpy()
         upsampled_activation_pattern = cv2.resize(activation_pattern, dsize=(img_size, img_size),
                                                   interpolation=cv2.INTER_CUBIC)
-        
+        # logging
+        f = open(save_analysis_path + '/top-' + str(i+1) + '_class_prototypes/' + 'top-' + str(prototype_cnt) + '_activated_prototype.txt', "w")
+        f.write('similarity: {0:.3f}\n'.format(prototype_activations[idx][prototype_index]))
+        f.write('last layer connection: {0:.3f}\n'.format(ppnet.last_layer.weight[c][prototype_index]))
+        f.write('proto index: ' + str(prototype_index) + '\n')
+        for class_id_ in range(num_classes):
+            f.write(f'proto connection to class {class_id_}:')
+            f.write(str(ppnet.last_layer.weight[class_id_][prototype_index]) + '\n')
+        f.close()
         # show the most highly activated patch of the image by this prototype
         high_act_patch_indices = find_high_activation_crop(upsampled_activation_pattern)
         high_act_patch = original_img[high_act_patch_indices[0]:high_act_patch_indices[1],
@@ -341,6 +403,19 @@ for i,c in enumerate(topk_classes.detach().cpu().numpy()):
         plt.imsave(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
                                 'prototype_activation_map_by_top-%d_prototype.png' % prototype_cnt),
                    overlayed_img)
+
+        # show the image overlayed with differently normed prototype activation map
+        rescaled_activation_pattern = upsampled_activation_pattern - np.amin(upsampled_activation_pattern)
+        rescaled_activation_pattern = rescaled_activation_pattern / max_act
+        heatmap = cv2.applyColorMap(np.uint8(255*rescaled_activation_pattern), cv2.COLORMAP_JET)
+        heatmap = np.float32(heatmap) / 255
+        heatmap = heatmap[...,::-1]
+        overlayed_img = 0.5 * original_img + 0.3 * heatmap
+        log('prototype activation map of the chosen image:')
+        #plt.axis('off')
+        plt.imsave(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
+                                'prototype_activation_map_by_top-%d_prototype_normed.png' % prototype_cnt),
+                   overlayed_img)
         log('--------------------------------------------------------------')
         prototype_cnt += 1
     log('***************************************************************')
@@ -349,6 +424,76 @@ if predicted_cls == correct_cls:
     log('Prediction is correct.')
 else:
     log('Prediction is wrong.')
+print("saved in ", save_analysis_path)
+
+def visualize_origninal_image(test_image_name, excel_dir, files_dir):
+    # visualize the original mammogram
+    df = pd.read_excel(excel_dir)
+    locations = df['Box_List']
+    win_width = df['Win_Width']
+    win_cen = df['Win_Center']
+    names = list(df["File_Name"])
+    test_image_name = test_image_name.split(".")[0] + ".png"
+    i = names.index(test_image_name)
+    for root, dir, files in os.walk(
+            files_dir):
+        for file in files:
+            # find the index of the name
+            path = os.path.join(root, file)
+            temp = file.split("_")
+            name = temp[-4][-5:] + "_" + temp[-3] + "_" + temp[-2] + "_" + temp[-1]
+            if name != test_image_name:
+                continue
+
+            # read image into np
+            reader = png.Reader(path)
+            data = reader.read()
+            pixels = data[2]
+            image = []
+            for row in pixels:
+                row = np.asarray(row, dtype=np.uint16)
+                image.append(row)
+            image = np.stack(image, 1)
+
+            wwidth = np.asarray(ast.literal_eval(win_width[i])).max()
+            wcen = np.median(np.asarray(ast.literal_eval(win_cen[i])))
+
+            image = ((image - wcen) / wwidth) + 0.5
+            image = np.clip(image, 0, 1)
+
+            # read the location
+            location = locations[i]
+            j, curr, temp = 0, "", []
+            while j < len(location):
+                if location[j] in "1234567890":
+                    curr += location[j]
+                else:
+                    if curr:
+                        temp.append(int(curr))
+                        curr = ""
+                j += 1
+            location = temp
+            if len(location) % 4 != 0:
+                print("Illegal location information ", location)
+                continue
+            x1, y1, x2, y2 = location[0:4]
+            x1, y1, x2, y2 = max(0, min(x1, x2) - 100), max(0, min(y1, y2) - 100), \
+                             min(image.shape[0], max(x1, x2) + 100), min(image.shape[1], max(y1, y2) + 100)
+            # x1, y1 = midx - target_size//2, midy - target_size//2
+            # x2, y2 = x1 + target_size, y1 + target_size
+            start_point = (y1, x1)
+            end_point = (y2, x2)
+            color = (0, 255, 0)
+            thickness = 5
+            image = cv2.rectangle(image, start_point, end_point, color, thickness)
+            roi = image[x1:x2, y1:y2]
+            print(np.amax(image), np.amin(image), np.amax(roi), np.amin(roi))
+            image = np.rot90(image, k=3)
+            plt.imsave(save_analysis_path + "/original_" + test_image_name, image, cmap="gray")
+            plt.imsave(save_analysis_path + "/original_part_" + test_image_name, roi, cmap="gray")
+
+            log("Successfully save original.")
+
+
 
 logclose()
-
