@@ -18,11 +18,11 @@ def main():
     # get dir
     parser = argparse.ArgumentParser()
     parser.add_argument('-local_analysis_directory', nargs=1, type=str, default='0')
-    parser.add_argument('-test_image_directory', nargs=1, type=str, default='/usr/xtmp/ProtoPNet_retrain/CUB_200_2011/datasets/cub200_cropped/test_cropped/')
+    parser.add_argument('-test_image_directory', nargs=1, type=str, default='/content/drive/My Drive/Research Stuff/RML2021/code_demo/data/CUB_200_2011/datasets/cub200_cropped/test_cropped/')
     args = parser.parse_args()
 
     source_dir = args.local_analysis_directory[0]
-    test_image_dir = args.test_image_directory
+    test_image_dir = args.test_image_directory[0]
     
     # Loading classes based on directory names
     classname_dict = dict()
@@ -63,7 +63,7 @@ def main():
             elif ax_num == 1:
                 ax.set_title("Test image activation\nby prototype", fontdict=None, loc='left', color = "k")
             elif ax_num == 2:
-                ax.set_title("Prototype", fontdict=None, loc='left', color = "k")
+                ax.set_title("Prototype in source\nimage", fontdict=None, loc='left', color = "k")
             elif ax_num == 3:
                 ax.set_title("Self-activation of\nprototype", fontdict=None, loc='left', color = "k")
             elif ax_num == 4:
@@ -85,12 +85,12 @@ def main():
 
         # get and plot data from source directory
 
-        orig_img = Image.open(os.path.join(source_dir + 'original_img.png'))
+        # orig_img = Image.open(os.path.join(source_dir + 'original_img.png'))
 
-        for ax in [f_axes[r][0] for r in range(nrows)]:
-            ax.imshow(orig_img)
-            ax.get_xaxis().set_ticks([])
-            ax.get_yaxis().set_ticks([])
+        # for ax in [f_axes[r][0] for r in range(nrows)]:
+        #     ax.imshow(orig_img)
+        #     ax.get_xaxis().set_ticks([])
+        #     ax.get_yaxis().set_ticks([])
 
         top_c_dir = os.path.join(source_dir + f'top-{top_c}_class_prototypes')
         for top_p in range(1,num_rows+1):
@@ -114,7 +114,12 @@ def main():
                     ax.set_axis_off()
                 p_info_file.close()
                 # put images in place
-                p_img = Image.open(os.path.join(top_c_dir, f'top-{top_p}_activated_prototype_full_size.png'))
+                p_img = Image.open(os.path.join(top_c_dir, f'most_highly_activated_patch_in_original_img_by_top-{top_p}_prototype.png'))
+                for ax in [f_axes[h_axis][0]]:
+                    ax.imshow(p_img)
+                    ax.get_xaxis().set_ticks([])
+                    ax.get_yaxis().set_ticks([])
+                p_img = Image.open(os.path.join(top_c_dir, f'top-{top_p}_activated_prototype_in_original_pimg.png'))
                 for ax in [f_axes[h_axis][2]]:
                     ax.imshow(p_img)
                     ax.get_xaxis().set_ticks([])
@@ -183,12 +188,12 @@ def main():
 
     # get and plot data from source directory
 
-    orig_img = Image.open(os.path.join(source_dir + 'original_img.png'))
+    # orig_img = Image.open(os.path.join(source_dir + 'original_img.png'))
 
-    for ax in [f_axes[r][0] for r in range(nrows)]:
-        ax.imshow(orig_img)
-        ax.get_xaxis().set_ticks([])
-        ax.get_yaxis().set_ticks([])
+    # for ax in [f_axes[r][0] for r in range(nrows)]:
+    #     ax.imshow(orig_img)
+    #     ax.get_xaxis().set_ticks([])
+    #     ax.get_yaxis().set_ticks([])
 
     top_p_dir = os.path.join(source_dir + 'most_activated_prototypes')
     for top_p in range(1, num_rows+1):
@@ -208,7 +213,12 @@ def main():
             ax.annotate('{0:.3f}'.format(tc) + "\n" + class_str, **anno_opts_cen)
             ax.set_axis_off()
         # put images in place
-        p_img = Image.open(os.path.join(top_p_dir, f'top-{top_p}_activated_prototype_full_size.png'))
+        p_img = Image.open(os.path.join(top_p_dir, f'most_highly_activated_patch_in_original_img_by_top-{top_p}_prototype.png'))
+        for ax in [f_axes[h_axis][0]]:
+            ax.imshow(p_img)
+            ax.get_xaxis().set_ticks([])
+            ax.get_yaxis().set_ticks([])
+        p_img = Image.open(os.path.join(top_p_dir, f'top-{top_p}_activated_prototype_in_original_pimg.png'))
         for ax in [f_axes[h_axis][2]]:
             ax.imshow(p_img)
             ax.get_xaxis().set_ticks([])

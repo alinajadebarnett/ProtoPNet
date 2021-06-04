@@ -56,14 +56,18 @@ load_model_name = args.test_model_name[0] # '100_9push0.9258.pth'
 #    model_base_architecture = load_model_dir.split('/')[-2]
 #    experiment_run = load_model_dir.split('/')[-1]
 
-model_base_architecture = load_model_dir.split('/')[2]
-experiment_run = '/'.join(load_model_dir.split('/')[3:])
+model_base_architecture = load_model_dir.split('/')[-3]
+experiment_run = '/'.join(load_model_dir.split('/')[-2:])
 
 save_analysis_path = os.path.join(load_model_dir, test_image_name)
 makedir(save_analysis_path)
 print(save_analysis_path)
 
-log, logclose = create_logger(log_filename=os.path.join(save_analysis_path, 'local_analysis.log'))
+log, logclose = create_logger(log_filename=os.path.join(save_analysis_path, 'local_analysis.log')) #logger fails on Colab
+# def log(string_here):
+#     print(string_here)
+# def logclose():
+#     pass
 
 load_model_path = os.path.join(load_model_dir, load_model_name)
 epoch_number_str = re.search(r'\d+', load_model_name).group(0)
@@ -269,12 +273,16 @@ for i in range(1,6):
     high_act_patch_indices = find_high_activation_crop(upsampled_activation_pattern)
     high_act_patch = original_img[high_act_patch_indices[0]:high_act_patch_indices[1],
                                   high_act_patch_indices[2]:high_act_patch_indices[3], :]
-    log('most highly activated patch of the chosen image by this prototype:')
+    log('most highly activated patch of the chosen image by this prototype:'
+        + str(os.path.join(save_analysis_path, 'most_activated_prototypes',
+            'most_highly_activated_patch_by_top-%d_prototype.png' % i)))
     #plt.axis('off')
     plt.imsave(os.path.join(save_analysis_path, 'most_activated_prototypes',
                             'most_highly_activated_patch_by_top-%d_prototype.png' % i),
                high_act_patch)
-    log('most highly activated patch by this prototype shown in the original image:')
+    log('most highly activated patch by this prototype shown in the original image:'
+        + str(os.path.join(save_analysis_path, 'most_activated_prototypes',
+            'most_highly_activated_patch_in_original_img_by_top-%d_prototype.png' % i)))
     imsave_with_bbox(fname=os.path.join(save_analysis_path, 'most_activated_prototypes',
                             'most_highly_activated_patch_in_original_img_by_top-%d_prototype.png' % i),
                      img_rgb=original_img,
@@ -290,7 +298,8 @@ for i in range(1,6):
     heatmap = np.float32(heatmap) / 255
     heatmap = heatmap[...,::-1]
     overlayed_img = 0.5 * original_img + 0.3 * heatmap
-    log('prototype activation map of the chosen image:')
+    log('prototype activation map of the chosen image:' + str(os.path.join(save_analysis_path, 'most_activated_prototypes',
+        'prototype_activation_map_by_top-%d_prototype.png' % i)))
     #plt.axis('off')
     plt.imsave(os.path.join(save_analysis_path, 'most_activated_prototypes',
                             'prototype_activation_map_by_top-%d_prototype.png' % i),
@@ -309,6 +318,9 @@ for i in range(1,6):
     heatmap = heatmap[...,::-1]
     overlayed_img = 0.5 * original_img + 0.3 * heatmap
     #plt.axis('off')
+    log('normalized prototype activation map of the chosen image:' 
+         + str(os.path.join(save_analysis_path, 'most_activated_prototypes',
+                'prototype_activation_map_by_top-%d_prototype_normed.png' % i)))
     plt.imsave(os.path.join(save_analysis_path, 'most_activated_prototypes',
                             'prototype_activation_map_by_top-%d_prototype_normed.png' % i),
                overlayed_img)
@@ -377,14 +389,18 @@ for i,c in enumerate(topk_classes.detach().cpu().numpy()):
         high_act_patch_indices = find_high_activation_crop(upsampled_activation_pattern)
         high_act_patch = original_img[high_act_patch_indices[0]:high_act_patch_indices[1],
                                       high_act_patch_indices[2]:high_act_patch_indices[3], :]
-        log('most highly activated patch of the chosen image by this prototype:')
+        log('most highly activated patch of the chosen image by this prototype:' + 
+            str(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
+              'most_highly_activated_patch_by_top-%d_prototype.png' % prototype_cnt)))
         #plt.axis('off')
         plt.imsave(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
                                 'most_highly_activated_patch_by_top-%d_prototype.png' % prototype_cnt),
                    high_act_patch)
-        log('most highly activated patch by this prototype shown in the original image:')
+        log('most highly activated patch by this prototype shown in the original image:' 
+            + str(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
+               'most_highly_activated_patch_in_original_img_by_top-%d_prototype.png' % prototype_cnt)))
         imsave_with_bbox(fname=os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
-                                            'most_highly_activated_patch_in_original_img_by_top-%d_prototype.png' % prototype_cnt),
+                           'most_highly_activated_patch_in_original_img_by_top-%d_prototype.png' % prototype_cnt),
                          img_rgb=original_img,
                          bbox_height_start=high_act_patch_indices[0],
                          bbox_height_end=high_act_patch_indices[1],
@@ -398,7 +414,9 @@ for i,c in enumerate(topk_classes.detach().cpu().numpy()):
         heatmap = np.float32(heatmap) / 255
         heatmap = heatmap[...,::-1]
         overlayed_img = 0.5 * original_img + 0.3 * heatmap
-        log('prototype activation map of the chosen image:')
+        log('prototype activation map of the chosen image:'
+            + str(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
+                        'prototype_activation_map_by_top-%d_prototype.png' % prototype_cnt)))
         #plt.axis('off')
         plt.imsave(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
                                 'prototype_activation_map_by_top-%d_prototype.png' % prototype_cnt),
@@ -411,7 +429,9 @@ for i,c in enumerate(topk_classes.detach().cpu().numpy()):
         heatmap = np.float32(heatmap) / 255
         heatmap = heatmap[...,::-1]
         overlayed_img = 0.5 * original_img + 0.3 * heatmap
-        log('prototype activation map of the chosen image:')
+        log('normalized prototype activation map of the chosen image:'
+           + str(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
+                'prototype_activation_map_by_top-%d_prototype_normed.png' % prototype_cnt)))
         #plt.axis('off')
         plt.imsave(os.path.join(save_analysis_path, 'top-%d_class_prototypes' % (i+1),
                                 'prototype_activation_map_by_top-%d_prototype_normed.png' % prototype_cnt),
@@ -493,7 +513,5 @@ def visualize_origninal_image(test_image_name, excel_dir, files_dir):
             plt.imsave(save_analysis_path + "/original_part_" + test_image_name, roi, cmap="gray")
 
             log("Successfully save original.")
-
-
 
 logclose()
